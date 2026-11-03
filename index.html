@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>WebAR Video</title>
+
+  <!-- A-Frame + MindAR (free, open source) -->
+  <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
+
+  <style>
+    html, body { margin: 0; height: 100%; overflow: hidden; background: #000; font-family: system-ui, sans-serif; }
+    #start {
+      position: fixed; inset: 0; z-index: 10;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      background: rgba(0,0,0,.85); color: #fff; text-align: center; padding: 24px;
+    }
+    #start button {
+      margin-top: 20px; padding: 14px 32px; font-size: 18px; border: 0; border-radius: 999px;
+      background: #2f80ed; color: #fff;
+    }
+    #hint {
+      position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); z-index: 5;
+      color: #fff; background: rgba(0,0,0,.5); padding: 8px 16px; border-radius: 999px; font-size: 14px;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <!-- Tap-to-start screen: needed so mobile browsers allow video with sound -->
+  <div id="start">
+    <h2>Point your camera at an image</h2>
+    <p>A video will play when an image is detected.</p>
+    <button id="startBtn">Start</button>
+  </div>
+  <div id="hint">Scanning…</div>
+
+  <a-scene
+    mindar-image="imageTargetSrc: ./targets.mind; maxTrack: 1; autoStart: false; uiScanning: no; uiLoading: no"
+    color-space="sRGB"
+    renderer="colorManagement: true, physicallyCorrectLights"
+    vr-mode-ui="enabled: false"
+    device-orientation-permission-ui="enabled: false">
+
+    <a-assets id="assets" timeout="1"></a-assets>
+    <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
+    <a-entity id="targets"></a-entity>
+  </a-scene>
+
+  <script>
+    // ===== CONFIG =====
+    // Order MUST match the order you uploaded images to the MindAR compiler.
+    const VIDEOS = [
+      "videos/video1.mp4",
+    ];
+    // ==================
+
+    const assets = document.getElementById("assets");
+    const targetsRoot = document.getElementById("targets");
+    const hint = document.getElementById("hint");
+
+    VIDEOS.forEach((src, i) => {
+      // Video element (loaded only when needed to save data)
+      const video = document.createElement("video");
+      video.id = `vid${i}`;
+      video.src = src;
+      video.preload = "none";
+      video.loop = true;
+      video.muted = true;
+      video.setAttribute("playsinline", "");
+      video.setAttribute("webkit-playsinline", "");
+      video.setAttribute("crossorigin", "anonymous");
+      assets.appendChild(video);
+
+      // Target anchor
+      const target = document.createElement("a-entity");
+      target.setAttribute("mindar-image-target", `targetIndex: ${i}`);
+
+      // Video plane (width 1 = width of the target image)
+      const plane = document.createElement("a-video");
+      plane.setAttribute("src", `#vid${i}`);
+      plane.setAttribute("width", "1");
+      plane.setAttribute("height", "0.5625"); // 16:9 default, auto-corrected below
+      plane.setAttribute("position", "0 0 0.01");
+      plane.setAttribute("visible", "false");
+      target.appendChild(plane);
+
+      // Match plane to the video's real aspect ratio
+      video.addEventListener("loadedmetadata", () => {
+        if (video.videoWidth) {
+          plane.setAttribute("height", video.videoHeight / video.videoWidth);
+        }
+      });
+
+      target.addEventListener("targetFound", () => {
+        hint.style.display = "none";
+        plane.setAttribute("visible", "true");
+        video.play().catch(() => {});
+      });
+
+      target.addEventListener("targetLost", () => {
+        hint.style.display = "block";
+        plane.setAttribute("visible", "false");
+        video.pause();
+      });
+
+      targetsRoot.appendChild(target);
+    });
+
+    // Start AR on user tap (unlocks camera + video sound on iOS/Android)
+    document.getElementById("startBtn").addEventListener("click", async () => {
+      document.getElementById("start").style.display = "none";
+      hint.style.display = "block";
+
+      // Unlock each video for sound by playing/pausing within the tap gesture
+      document.querySelectorAll("#assets video").forEach((v) => {
+        v.muted = false;
+        v.play().then(() => v.pause()).catch(() => { v.muted = true; });
+      });
+
+      const sceneEl = document.querySelector("a-scene");
+      const start = () => sceneEl.systems["mindar-image-system"].start();
+      if (sceneEl.hasLoaded) start(); else sceneEl.addEventListener("loaded", start);
+    });
+  </script>
+</body>
+</html>
